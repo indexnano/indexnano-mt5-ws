@@ -1,3 +1,6 @@
+// Detect WebSocket (browser vs Node.js)
+const WS = typeof WebSocket !== 'undefined' ? WebSocket : require('ws');
+
 class IndexNanoWS {
   constructor(connectionId, apiKey, options = {}) {
     this.connectionId = connectionId;
@@ -27,7 +30,7 @@ class IndexNanoWS {
     });
     if (!res.ok) throw new Error(`Failed to subscribe to ${symbol}`);
     this.subscribedSymbols.add(symbol);
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+    if (!this.ws || this.ws.readyState !== WS.OPEN) {
       this._openWebSocket('OnQuote');
     }
   }
@@ -42,9 +45,9 @@ class IndexNanoWS {
   }
 
   _openWebSocket(endpoint) {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) return;
+    if (this.ws && this.ws.readyState === WS.OPEN) return;
     const url = `${this.wsUrl}/ws/${endpoint}?id=${this.connectionId}&api_key=${this.apiKey}`;
-    this.ws = new WebSocket(url);
+    this.ws = new WS(url);
     this.ws.onmessage = (event) => this._handleMessage(event.data);
     this.ws.onclose = () => this._autoUnsubscribe();
   }
