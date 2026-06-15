@@ -1,4 +1,3 @@
-// Detect WebSocket (browser vs Node.js)
 const WS = typeof WebSocket !== 'undefined' ? WebSocket : require('ws');
 
 class IndexNanoWS {
