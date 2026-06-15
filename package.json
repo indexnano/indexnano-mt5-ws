@@ -1,0 +1,8 @@
+{
+  "name": "@indexnano/mt5-ws",
+  "version": "1.0.0",
+  "description": "WebSocket SDK for IndexNano MT5 API – real-time orders and quotes",
+  "main": "index.js",
+  "keywords": ["mt5", "websocket", "trading", "forex"],
+  "license": "MIT"
+}
