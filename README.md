@@ -1,83 +1,90 @@
-# @indexnano/mt5-ws
+## Documentation for `@indexnano/mt5-ws`
 
-WebSocket SDK for real-time MT5 trading data – live orders, trades, and price quotes.
+### Installation
 
-## Prerequisites
-
-- You must have a valid API key from IndexNano
-- You must have an active MT5 connection ID obtained via REST /ConnectEx endpoint
-- Your account must have sufficient credits
-
-## Installation
-
+```bash
 npm install @indexnano/mt5-ws
+```
 
-## Quick Start
+### Quick Start – Real-Time Order & Profit Stream
 
-import IndexNanoWS from '@indexnano/mt5-ws';
+```javascript
+const IndexNanoWS = require('@indexnano/mt5-ws');
 
+// Create client with your connection ID and API key
 const client = new IndexNanoWS('YOUR_CONNECTION_ID', 'YOUR_API_KEY');
 
-client.on('order', (event) => {
-  console.log('Order update:', event);
+// Listen to the full payload (equity, profit, open orders)
+client.on('update', (data) => {
+  console.log('Equity:', data.Equity);
+  console.log('Profit:', data.Profit);
+  console.log('Open Orders:', data.OpenedOrders);
 });
 
-client.on('quote', (quote) => {
-  console.log(`${quote.symbol}: ${quote.bid} / ${quote.ask}`);
-});
+// Listen to individual fields
+client.on('equity', (eq) => console.log('Equity:', eq));
+client.on('profit', (p) => console.log('Profit:', p));
+client.on('orders', (orders) => console.log('Orders:', orders));
 
-await client.subscribeOrderUpdates();
-await client.subscribeQuote('EURUSD');
-await client.subscribeQuote('GBPUSD');
+// Connect to the WebSocket stream
+client.connectOrderProfit();
+```
 
-## API Reference
+### How It Works
 
-new IndexNanoWS(connectionId, apiKey, options)
-- connectionId: string - your connection id
-- apiKey: string - Your IndexNano API key
-- options.wsUrl: string - optional, defaults to wss://ws.indexnano.com
-- options.restBase: string - optional, defaults to https://mt-api.indexnano.com/v1
+- The SDK opens a WebSocket to `wss://ws.indexnano.com/wsOrderProfit` with your credentials.
+- Your server pushes a JSON payload every second containing:
+  - `Equity` – current account equity
+  - `Profit` – total floating profit/loss
+  - `OpenedOrders` – array of all open positions (symbol, volume, profit, open price, SL/TP, current price)
+- The connection stays alive until you call `client.close()` or the user disconnects.
+- When the connection ends, the SDK automatically calls the REST `UnSubscribeOrderProfit` endpoint to stop the background thread on the server (no resource leaks).
 
-Methods:
-- subscribeOrderUpdates() - enables real-time order events, opens WebSocket
-- subscribeQuote(symbol) - subscribes to live price ticks
-- unsubscribeQuote(symbol) - stops price ticks
-- on(event, callback) - event: 'order' or 'quote'
-- close() - manually closes WebSocket
+### Events
 
-Events:
-- order: object - order update (opened, modified, closed, filled, cancelled)
-- quote: object - { symbol, bid, ask, time, last, volume }
+| Event | Payload | Description |
+|-------|---------|-------------|
+| `update` | full object | Complete payload with `Equity`, `Profit`, `OpenedOrders` |
+| `equity` | number | Current equity value |
+| `profit` | number | Current floating P&L |
+| `orders` | array | List of open orders |
+| `open` | – | Fired when WebSocket opens |
+| `close` | – | Fired when WebSocket closes |
+| `error` | Error | Fired on WebSocket error |
 
-Auto-Unsubscribe: SDK automatically unsubscribes when WebSocket closes.
+### Full Example with Error Handling
 
-## Full Example with Error Handling
+```javascript
+const IndexNanoWS = require('@indexnano/mt5-ws');
 
 const client = new IndexNanoWS(connectionId, apiKey);
 
-client.on('order', (order) => {
-  if (order.state === 'Filled') {
-    console.log(`Order filled: ${order.symbol} ${order.lots} @ ${order.openPrice}`);
-  }
+client.on('open', () => console.log('Connected to stream'));
+client.on('update', (data) => {
+  console.log(`Equity: ${data.Equity}, Profit: ${data.Profit}`);
+  console.log(`Open positions: ${data.OpenedOrders.length}`);
 });
-
-client.on('quote', (quote) => {
-  // update UI
-});
+client.on('error', (err) => console.error('WebSocket error:', err));
+client.on('close', () => console.log('Disconnected'));
 
 try {
-  await client.subscribeOrderUpdates();
-  await client.subscribeQuote('EURUSD');
+  client.connectOrderProfit();
 } catch (err) {
-  console.error('Failed:', err.message);
+  console.error('Failed to connect:', err);
 }
 
+// When done (e.g., user logs out)
 client.close();
+```
 
-## Support
+### Requirements
 
-daus@indexnano.com | https://indexnano.com
+- You must already have a valid `connection_id` from your REST `/ConnectEx` call.
+- Your API key must have sufficient credits and an active MT5 session.
+- The MT5 account must be `status = true` (not paused).
 
-## License
+### Notes
 
-MIT
+- The server pushes data once per second; this interval is fixed.
+- No separate subscription REST call is needed – the WebSocket itself starts the stream.
+- The SDK automatically unsubscribes on close; no manual cleanup required.
