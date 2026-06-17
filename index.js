@@ -6,8 +6,9 @@ class IndexNanoWS {
     this.apiKey = apiKey;
     this.wsUrl = options.wsUrl || 'wss://ws.indexnano.com';
     this.restBase = options.restBase || 'https://mt-api.indexnano.com/v1';
-    this.ws = null;
-    this.eventListeners = { order: [], quote: [] };
+    this.ws = null;           
+    this.orderProfitWs = null; 
+    this.eventListeners = { order: [], quote: [], equity: [], profit: [], orders: [], update: [], error: [] };
     this.subscribedSymbols = new Set();
     this.orderUpdatesActive = false;
   }
@@ -55,9 +56,9 @@ class IndexNanoWS {
     let data;
     try { data = JSON.parse(raw); } catch(e) { data = raw; }
     if (data.symbol && (data.bid !== undefined || data.ask !== undefined)) {
-      this.eventListeners.quote.forEach(cb => cb(data));
+      this.emit('quote', data);
     } else {
-      this.eventListeners.order.forEach(cb => cb(data));
+      this.emit('order', data);
     }
   }
 
@@ -73,13 +74,68 @@ class IndexNanoWS {
     }
   }
 
-  on(event, callback) {
-    if (event === 'order') this.eventListeners.order.push(callback);
-    if (event === 'quote') this.eventListeners.quote.push(callback);
+  connectOrderProfit() {
+    if (this.orderProfitWs && this.orderProfitWs.readyState === WS.OPEN) {
+      return; 
+    }
+    
+    if (this.orderProfitWs) {
+      this.orderProfitWs.close();
+    }
+    const url = `${this.wsUrl}/wsOrderProfit?id=${this.connectionId}&api_key=${this.apiKey}`;
+    this.orderProfitWs = new WS(url);
+
+    this.orderProfitWs.onopen = () => {
+      this.emit('open');
+    };
+
+    this.orderProfitWs.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        
+        if (data.Equity !== undefined) this.emit('equity', data.Equity);
+        if (data.Profit !== undefined) this.emit('profit', data.Profit);
+        if (data.OpenedOrders !== undefined) this.emit('orders', data.OpenedOrders);
+        
+        this.emit('update', data);
+      } catch (e) {
+        this.emit('error', e);
+      }
+    };
+
+    this.orderProfitWs.onerror = (err) => {
+      this.emit('error', err);
+    };
+
+    this.orderProfitWs.onclose = () => {
+      
+      fetch(`${this.restBase}/UnSubscribeOrderProfit?id=${this.connectionId}`, {
+        headers: { 'Authorization': `Bearer ${this.apiKey}` }
+      }).catch(() => {});
+      this.emit('close');
+    };
   }
 
+  
+  on(event, callback) {
+    if (!this.eventListeners[event]) {
+      throw new Error(`Unknown event: ${event}`);
+    }
+    this.eventListeners[event].push(callback);
+  }
+
+  emit(event, data) {
+    if (this.eventListeners[event]) {
+      for (const cb of this.eventListeners[event]) {
+        cb(data);
+      }
+    }
+  }
+
+  
   close() {
     if (this.ws) this.ws.close();
+    if (this.orderProfitWs) this.orderProfitWs.close();
   }
 }
 
